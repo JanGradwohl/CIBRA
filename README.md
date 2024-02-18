@@ -23,11 +23,14 @@ SendKeys("Text{ENTER}"); // Gibt "Text" ein und drückt Enter.
 SendKeys("{ALT}f{ALT}x"); // Öffnet das Dateimenü (Alt + f) und wählt Beenden (x) in vielen Anwendungen.
 SendKeys("{LEFTCLICK}"); // Führt einen Linksklick aus.
 SendKeys("{RIGHTCLICK}"); // Führt einen Rechtsklick aus.
+```
 
 
-#### Sicheres Löschen von Dateien mit Militärstandard-Algorithmen
+## Erase Funktion
 
-Die `secureErase`-Funktion bietet eine robuste Lösung zum sicheren Löschen von Dateien, indem sie fortschrittliche Datenlöschalgorithmen nutzt, die auf strengen Militärstandards basieren. Diese Algorithmen gewährleisten, dass gelöschte Daten mit einem Maß an Sicherheit entfernt werden, das den Anforderungen militärischer und geheimdienstlicher Organisationen entspricht. Unterstützte Standards umfassen:
+### Sicheres Löschen von Dateien mit Militärstandard-Algorithmen
+
+Die `Erase`-Funktion bietet eine robuste Lösung zum sicheren Löschen von Dateien, indem sie fortschrittliche Datenlöschalgorithmen nutzt, die auf strengen Militärstandards basieren. Diese Algorithmen gewährleisten, dass gelöschte Daten mit einem Maß an Sicherheit entfernt werden, das den Anforderungen militärischer und geheimdienstlicher Organisationen entspricht. Unterstützte Standards umfassen:
 
 - **DoD 5220.22-M (USA, Verteidigungsministerium)**: Ein 3-Pass-Algorithmus, der Daten mit den Mustern 0x00, 0xFF und erneut 0x00 überschreibt, um eine sichere Datenlöschung zu gewährleisten.
 - **AFSSI-5020 (US Air Force)**: Ein Durchgang mit 0x00, bietet eine schnelle und effektive Methode zur Datenlöschung.
@@ -43,3 +46,7 @@ Um eine Datei sicher zu löschen, wählen Sie einfach den gewünschten Algorithm
 
 ```c
 secureErase("pfad/zur/datei.txt", "DoD5220.22-M");
+```
+
+
+
