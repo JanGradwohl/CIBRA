@@ -9,6 +9,7 @@
 #ifdef _WIN32
 
 #include <windows.h>
+#include <conio.h>
 
 #endif
 
@@ -23,24 +24,192 @@
 #endif
 
 
+typedef struct KeyLogger {
+    char* buffer;       // Dynamischer Puffer für Tastenanschläge
+    size_t size;        // Anzahl der gespeicherten Tastenanschläge
+    size_t capacity;    // Kapazität des Puffers
+} KeyLogger;
+
+
 #ifdef _WIN32
-void SendKeysWin(const char* keys) {
-    INPUT input[2];
-    int string_length = strlen(keys);
-    memset(input, 0, sizeof(input));
+void sendKeyEvent(WORD vkCode, BOOL isExtended, BOOL isKeyUp) {
+    INPUT input = { 0 };
 
-    for (int i = 0; i <= string_length - 1; i++)
+    input.type = INPUT_KEYBOARD;
+    input.ki.wVk = vkCode;
+    input.ki.dwFlags = (isExtended ? KEYEVENTF_EXTENDEDKEY : 0) | (isKeyUp ? KEYEVENTF_KEYUP : 0);
+
+    SendInput(1, &input, sizeof(INPUT));
+}
+
+void sendMouseClick(DWORD flags) {
+    INPUT input[2] = { 0 };
+
+    input[0].type = INPUT_MOUSE;
+    input[0].mi.dwFlags = flags;  // Drücken
+
+    input[1].type = INPUT_MOUSE;
+    input[1].mi.dwFlags = flags | MOUSEEVENTF_LEFTUP;  // Loslassen
+
+    SendInput(2, input, sizeof(INPUT));
+}
+
+void sendSpecialKey(const char* key) {
+    if (strcmp(key, "LEFTCLICK") == 0) {
+        sendMouseClick(MOUSEEVENTF_LEFTDOWN);
+    }
+    else if (strcmp(key, "RIGHTCLICK") == 0) 
     {
-        input[0].type = INPUT_KEYBOARD;
-        input[0].ki.wVk = VkKeyScan(keys[i]); // Holt den virtuellen Tastencode
+        sendMouseClick(MOUSEEVENTF_RIGHTDOWN);
+    }
+    else if (strcmp(key, "CTRL") == 0) {
+        sendKeyEvent(VK_CONTROL, FALSE, FALSE);
+        sendKeyEvent(VK_CONTROL, FALSE, TRUE);
+    }
+    else if (strcmp(key, "ALT") == 0) {
+        sendKeyEvent(VK_MENU, FALSE, FALSE);
+        sendKeyEvent(VK_MENU, FALSE, TRUE);
+    }
+    else if (strcmp(key, "WIN") == 0) {
+        sendKeyEvent(VK_LWIN, FALSE, FALSE);
+        sendKeyEvent(VK_LWIN, FALSE, TRUE);
+    }
+    else if (strcmp(key, "UP") == 0) {
+        sendKeyEvent(VK_UP, FALSE, FALSE);
+        sendKeyEvent(VK_UP, FALSE, TRUE);
+    }
+    else if (strcmp(key, "DOWN") == 0) {
+        sendKeyEvent(VK_DOWN, FALSE, FALSE);
+        sendKeyEvent(VK_DOWN, FALSE, TRUE);
+    }
+    else if (strcmp(key, "LEFT") == 0) {
+        sendKeyEvent(VK_LEFT, FALSE, FALSE);
+        sendKeyEvent(VK_LEFT, FALSE, TRUE);
+    }
+    else if (strcmp(key, "RIGHT") == 0) {
+        sendKeyEvent(VK_RIGHT, FALSE, FALSE);
+        sendKeyEvent(VK_RIGHT, FALSE, TRUE);
+    }
+    else if (strncmp(key, "F", 1) == 0 && strlen(key) <= 3) {
+        int fnum = atoi(key + 1);
+        if (fnum >= 1 && fnum <= 12) {
+            sendKeyEvent(VK_F1 + (fnum - 1), FALSE, FALSE);
+            sendKeyEvent(VK_F1 + (fnum - 1), FALSE, TRUE);
+        }
+    }
+    else if (strcmp(key, "BACKSPACE") == 0) {
+        sendKeyEvent(VK_BACK, FALSE, FALSE);
+        sendKeyEvent(VK_BACK, FALSE, TRUE);
+    }
+    // Fügen Sie hier weitere spezielle Tasten hinzu
+}
 
-        input[1] = input[0];
-        input[1].ki.dwFlags = KEYEVENTF_KEYUP; // Setzt das Key-Up Flag
 
-        SendInput(2, input, sizeof(INPUT)); // Sendet das Tastenereignis
+void SendKeys(const char* keys) {
+    while (*keys) {
+        if (*keys == '{') {
+            char specialKey[32] = { 0 };
+            keys++;
+            char* dest = specialKey;
+            while (*keys && *keys != '}') {
+                *dest++ = *keys++;
+            }
+            if (*keys == '}') keys++;
+            sendSpecialKey(specialKey);
+        }
+        else {
+            SHORT vk = VkKeyScan(*keys);
+            WORD vkCode = LOBYTE(vk);
+            BOOL isExtended = HIBYTE(vk) & 1;
+            sendKeyEvent(vkCode, isExtended, FALSE);
+            sendKeyEvent(vkCode, isExtended, TRUE);
+            keys++;
+        }
     }
 }
-#endif
+
+//MOUSE POSITION
+void SetMousePosition(int x, int y) 
+{
+    SetCursorPos(x, y);
+}
+
+
+char* os(const char* command) {
+    static char* result = NULL;
+    static size_t resultSize = 0;
+
+    size_t bytesUsed = 0;
+    FILE* pipe = _popen(command, "r");  // Verwende _popen auf Windows
+    if (!pipe) return "ERROR";
+
+    if (result == NULL) {
+        result = malloc(1024);
+        if (!result) {
+            perror("Failed to allocate memory");
+            return NULL;
+        }
+        resultSize = 1024;
+    }
+    result[0] = '\0';
+
+    char buffer[128];
+    while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
+        size_t bufferLen = strlen(buffer);
+        if (bytesUsed + bufferLen + 1 > resultSize) {
+            size_t newSize = resultSize + 1024;
+            char* newResult = realloc(result, newSize);
+            if (!newResult) {
+                perror("Failed to reallocate memory");
+                _pclose(pipe);  // Verwende _pclose auf Windows
+                return NULL;
+            }
+            result = newResult;
+            resultSize = newSize;
+        }
+        strcat_s(result, resultSize, buffer);
+        bytesUsed += bufferLen;
+    }
+
+    _pclose(pipe);  // Verwende _pclose auf Windows
+    return result;
+}
+
+
+void initializeLogger(KeyLogger* logger) {
+    logger->capacity = 128; // Startkapazität
+    logger->size = 0;
+    logger->buffer = malloc(logger->capacity * sizeof(char));
+    if (!logger->buffer) {
+        fprintf(stderr, "Speicherzuweisung fehlgeschlagen\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void logKey(KeyLogger* logger, char key) {
+    if (logger->size >= logger->capacity) {
+        logger->capacity *= 2;
+        char* newBuffer = realloc(logger->buffer, logger->capacity * sizeof(char));
+        if (!newBuffer) {
+            fprintf(stderr, "Speichererweiterung fehlgeschlagen\n");
+            free(logger->buffer);
+            exit(EXIT_FAILURE);
+        }
+        logger->buffer = newBuffer;
+    }
+    logger->buffer[logger->size++] = key;
+}
+
+void stopLogging(KeyLogger* logger) {
+    logger->buffer[logger->size] = '\0'; // Null-Terminator hinzufügen
+    printf("Gespeicherte Tastenanschläge: %s\n", logger->buffer);
+    free(logger->buffer); // Freigabe des Speichers
+} 
+
+
+
+#endif WIN
+
 
 
 #ifdef __linux__
@@ -142,9 +311,7 @@ KeySym charToKeySym(char c) {
     }
 }
 
-
-
-void SendKeysLinux(const char* str) {
+void SendKeys(const char* str) {
     Display* display = XOpenDisplay(NULL);
     if (!display) {
         fprintf(stderr, "Cannot open display\n");
@@ -181,26 +348,71 @@ void SendKeysLinux(const char* str) {
     XCloseDisplay(display);
 }
 
-#endif
+void setMousePosition(int x, int y) {
+    Display* display = XOpenDisplay(NULL);
+    if (display == NULL) {
+        fprintf(stderr, "Cannot open display\n");
+        exit(1);
+    }
 
+    Window root = DefaultRootWindow(display);
+    XWarpPointer(display, None, root, 0, 0, 0, 0, x, y);
+    XFlush(display);  // Stellt sicher, dass der Befehl sofort ausgeführt wird
 
-void SendKeys(const char* keys)
-{
-
-#ifdef _WIN32
-    SendKeysWin(keys);
-#endif
-
-#ifdef __linux__
-    SendKeysLinux(keys);
-#endif
-
+    XCloseDisplay(display);
 }
 
 
-int main() {
-    Sleep(5000);
-    SendKeys("Hello, World! {CTRL}c{CTRL}{ALT}Tab{F1}{UP}cc{LEFT}{RIGHT}{WIN}r");
-    return 0;
+char* os(const char* command) {
+    static char* result = NULL;  // Statischer Pointer, um den aktuellen Speicherblock zu speichern
+    static size_t resultSize = 0;  // Aktuelle Größe des Speicherblocks
+
+    size_t bytesUsed = 0;  // Wie viel vom Speicher bereits verwendet wurde
+    FILE* pipe = popen(command, "r");
+    if (!pipe) return "ERROR";
+
+    if (result == NULL) {  // Initialisiere den Speicher bei der ersten Verwendung
+        result = malloc(1024);
+        if (!result) {
+            perror("Failed to allocate memory");
+            return NULL;
+        }
+        resultSize = 1024;
+    }
+    result[0] = '\0';  // Reset des Ergebnis-Strings für diesen Aufruf
+
+    char buffer[128];
+    while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
+        size_t bufferLen = strlen(buffer);
+        if (bytesUsed + bufferLen + 1 > resultSize) {  // +1 für den Nullterminator
+            size_t newSize = resultSize + 1024;
+            char* newResult = realloc(result, newSize);
+            if (!newResult) {
+                perror("Failed to reallocate memory");
+                pclose(pipe);
+                return NULL;
+            }
+            result = newResult;
+            resultSize = newSize;
+        }
+        strcat_s(result, resultSize, buffer);
+        bytesUsed += bufferLen;
+    }
+
+    pclose(pipe);
+    return result;
 }
 
+
+#endif LINUX
+
+
+#ifdef __APPLE__
+
+void setMousePosition(int x, int y) {
+    char command[100];
+    sprintf(command, "osascript -e 'tell application \"System Events\" to set position of mouse to {%d, %d}'", x, y);
+    system(command);
+}
+
+#endif APPLE
