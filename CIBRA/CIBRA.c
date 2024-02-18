@@ -409,7 +409,7 @@ char* os(const char* command) {
 
 #ifdef __APPLE__
 
-void sendKeys(const char* sequence) {
+void SendKeys(const char* sequence) {
     while (*sequence != '\0') {
         char command[4096] = "osascript -e 'tell application \"System Events\" to ";
 
