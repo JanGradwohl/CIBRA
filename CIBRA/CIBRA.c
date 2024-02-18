@@ -409,6 +409,73 @@ char* os(const char* command) {
 
 #ifdef __APPLE__
 
+void sendKeys(const char* sequence) {
+    while (*sequence != '\0') {
+        char command[4096] = "osascript -e 'tell application \"System Events\" to ";
+
+        if (*sequence == ' ') {
+            strcat(command, "keystroke space'");
+        }
+        else if (*sequence == '{') {
+            char specialKey[32] = { 0 };
+            int offset = 1; // Start after '{'
+            while (sequence[offset] != '}' && sequence[offset] != '\0' && offset < 31) {
+                specialKey[offset - 1] = sequence[offset];
+                offset++;
+            }
+
+            if (strcmp(specialKey, "SPACE") == 0) {
+                strcat(command, "keystroke space'");
+            }
+            else if (strcmp(specialKey, "ENTER") == 0) {
+                strcat(command, "keystroke return'");
+            }
+            else if (strcmp(specialKey, "TAB") == 0) {
+                strcat(command, "keystroke tab'");
+            }
+            else if (strcmp(specialKey, "BACKSPACE") == 0) {
+                strcat(command, "key code 51'");
+            }
+            else if (strcmp(specialKey, "ESC") == 0) {
+                strcat(command, "key code 53'");
+            }
+            else if (strcmp(specialKey, "UP") == 0) {
+                strcat(command, "key code 126'");
+            }
+            else if (strcmp(specialKey, "DOWN") == 0) {
+                strcat(command, "key code 125'");
+            }
+            else if (strcmp(specialKey, "LEFT") == 0) {
+                strcat(command, "key code 123'");
+            }
+            else if (strcmp(specialKey, "RIGHT") == 0) {
+                strcat(command, "key code 124'");
+            }
+            else if (strcmp(specialKey, "DELETE") == 0) {
+                strcat(command, "key code 117'");
+            }
+            else if (strncmp(specialKey, "F", 1) == 0 && strlen(specialKey) <= 3) {
+                int fnum = atoi(specialKey + 1);
+                if (fnum >= 1 && fnum <= 12) {
+                    char fCommand[64];
+                    sprintf(fCommand, "key code %d'", 122 + fnum - 1); // F1 starts at key code 122
+                    strcat(command, fCommand);
+                }
+            } // Continue for other keys as needed
+            sequence += offset + 1; // Move past the '}'
+        }
+        else {
+            char keyStroke[64];
+            snprintf(keyStroke, sizeof(keyStroke), "keystroke \"%c\"'", *sequence);
+            strcat(command, keyStroke);
+            sequence++;
+        }
+
+        strcat(command, " -e 'key up {shift, control, option, command}'");
+        system(command);
+    }
+}
+
 void setMousePosition(int x, int y) {
     char command[100];
     sprintf(command, "osascript -e 'tell application \"System Events\" to set position of mouse to {%d, %d}'", x, y);
