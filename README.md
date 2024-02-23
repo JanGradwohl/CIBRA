@@ -45,7 +45,7 @@ Die `Erase`-Funktion bietet eine robuste Lösung zum sicheren Löschen von Datei
 Um eine Datei sicher zu löschen, wählen Sie einfach den gewünschten Algorithmus und den Dateipfad:
 
 ```c
-secureErase("pfad/zur/datei.txt", "DoD5220.22-M");
+Erase("pfad/zur/datei.txt", "DoD5220.22-M");
 ```
 
 
