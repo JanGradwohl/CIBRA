@@ -13,7 +13,7 @@ typedef enum {
     CANADIAN_RMCP_TSSIT_OPS_II,
     PETER_GUTMANN,
     US_ARMY_AR380_19,
-    UNKNOWN_ALGORITHM // Für nicht unterstützte Algorithmen
+    UNKNOWN_ALGORITHM
 } EraseAlgorithm;
 
 
