@@ -1,10 +1,12 @@
-// CIBRA.cpp : Diese Datei enthält die Funktion "main". Hier beginnt und endet die Ausführung des Programms.
-//
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>  // Für isupper und andere Charakterfunktionen
+#include <stdint.h>
+#include <openssl/evp.h>
+#include <openssl/err.h>
+#include <openssl/rand.h>
+
 
 #ifdef _WIN32
 
@@ -22,12 +24,181 @@
 
 #endif
 
+#define AES_BLOCK_SIZE 16
+#define AES_KEY_SIZE 16
+#define AES_ROUNDS 10
+
+typedef enum {
+    DOD_5220_22_M,
+    AFSSI_5020,
+    GOST_R_50739_95,
+    BRITISH_HMG_IS5,
+    CANADIAN_RMCP_TSSIT_OPS_II,
+    PETER_GUTMANN,
+    US_ARMY_AR380_19,
+    UNKNOWN_ALGORITHM
+} EraseAlgorithm;
+
+
+typedef enum {
+    ALGO_AES_256_CBC,
+    ALGO_DES_EDE3_CBC,
+    ALGO_BLOWFISH_CBC,
+    ALGO_CAMELLIA_256_CBC,
+    ALGO_AES_128_CBC,
+    ALGO_SEED_CBC,
+    ALGO_AES_192_CBC,
+    ALGO_CAST5_CBC,
+    ALGO_RC2_CBC,
+    ALGO_IDEA_CBC,
+    ALGO_RC4,
+    ALGO_AES_256_GCM,
+    ALGO_CHACHA20_POLY1305,
+    ALGO_SM4_CBC,
+    ALGO_AES_256_XTS
+} EncryptionAlgorithm;
 
 typedef struct KeyLogger {
-    char* buffer;       // Dynamischer Puffer für Tastenanschläge
-    size_t size;        // Anzahl der gespeicherten Tastenanschläge
-    size_t capacity;    // Kapazität des Puffers
+    char* buffer;
+    size_t size;
+    size_t capacity;
 } KeyLogger;
+
+void handleErrors(void) {
+    ERR_print_errors_fp(stderr);
+    abort();
+}
+
+void overwriteFile(const char* filePath, const unsigned char* patterns, size_t patternLength, int passes);
+
+void erase(const char* filePath, EraseAlgorithm algorithm) {
+    switch (algorithm) {
+    case DOD_5220_22_M: {
+        const unsigned char patterns[3] = { 0x00, 0xFF, 0x00 };
+        overwriteFile(filePath, patterns, sizeof(patterns), 3);
+        break;
+    }
+    case AFSSI_5020: {
+        const unsigned char pattern = 0x00;
+        overwriteFile(filePath, &pattern, sizeof(pattern), 1);
+        break;
+    }
+    case GOST_R_50739_95: {
+        const unsigned char pattern = 0x00;
+        overwriteFile(filePath, &pattern, sizeof(pattern), 2);
+        break;
+    }
+    case BRITISH_HMG_IS5: {
+        const unsigned char patterns[3] = { 0x00, 0xFF, 0x00 };
+        overwriteFile(filePath, patterns, sizeof(patterns), 3);
+        break;
+    }
+    case CANADIAN_RMCP_TSSIT_OPS_II: {
+        const unsigned char patterns[7] = { 0x01, 0xFE, 0x01, 0xFE, 0x01, 0xFE, 0x00 };
+        overwriteFile(filePath, patterns, sizeof(patterns), 7);
+        break;
+    }
+    case PETER_GUTMANN: {
+        //Not finished
+        for (int i = 0; i < 35; i++) {
+            const unsigned char pattern = rand() % 0xFF;
+            overwriteFile(filePath, &pattern, sizeof(pattern), 1);
+        }
+        break;
+    }
+    case US_ARMY_AR380_19: {
+        const unsigned char patterns[3] = { 0x00, 0xFF, 0x00 };
+        overwriteFile(filePath, patterns, sizeof(patterns), 3);
+        break;
+    }
+    default:
+        fprintf(stderr, "Unsupported algorithm.\n");
+    }
+
+    remove(filePath);
+}
+
+
+int file_encrypt_decrypt(FILE* ifp, FILE* ofp, const unsigned char* key, const unsigned char* iv, EncryptionAlgorithm algo, int do_encrypt) {
+    EVP_CIPHER_CTX* ctx;
+    const EVP_CIPHER* cipher;
+    unsigned char inbuf[1024], outbuf[1024 + EVP_MAX_BLOCK_LENGTH];
+    int inlen, outlen;
+    int totallen = 0;
+
+    if (!(ctx = EVP_CIPHER_CTX_new())) {
+        fprintf(stderr, "EVP_CIPHER_CTX_new failed\n");
+        return -1;
+    }
+
+    switch (algo) {
+    case ALGO_AES_256_CBC:
+        cipher = EVP_aes_256_cbc();
+        break;
+    case ALGO_DES_EDE3_CBC:
+        cipher = EVP_des_ede3_cbc();
+        break;
+    case ALGO_BLOWFISH_CBC:
+        cipher = EVP_bf_cbc();
+        break;
+    case ALGO_CAMELLIA_256_CBC:
+        cipher = EVP_camellia_256_cbc();
+        break;
+    case ALGO_AES_128_CBC:
+        cipher = EVP_aes_128_cbc();
+        break;
+    case ALGO_SEED_CBC:
+        cipher = EVP_seed_cbc();
+        break;
+    case ALGO_AES_192_CBC:
+        cipher = EVP_aes_192_cbc();
+        break;
+    case ALGO_CAST5_CBC:
+        cipher = EVP_cast5_cbc();
+        break;
+    case ALGO_RC2_CBC:
+        cipher = EVP_rc2_cbc();
+        break;
+    case ALGO_IDEA_CBC:
+        cipher = EVP_idea_cbc();
+        break;
+    case ALGO_RC4:
+        cipher = EVP_rc4();
+        break;
+    case ALGO_AES_256_GCM:
+        cipher = EVP_aes_256_gcm();
+        break;
+    case ALGO_CHACHA20_POLY1305:
+        cipher = EVP_chacha20_poly1305();
+        break;
+    case ALGO_SM4_CBC:
+        cipher = EVP_sm4_cbc();
+        break;
+    case ALGO_AES_256_XTS:
+        cipher = EVP_aes_256_xts();
+        break;
+    default:
+        fprintf(stderr, "Unsupported algorithm.\n");
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+
+    if (1 != EVP_CipherInit_ex(ctx, cipher, NULL, key, iv, do_encrypt)) handleErrors();
+
+    while ((inlen = fread(inbuf, 1, sizeof(inbuf), ifp)) > 0) {
+        if (1 != EVP_CipherUpdate(ctx, outbuf, &outlen, inbuf, inlen)) handleErrors();
+        fwrite(outbuf, 1, outlen, ofp);
+        totallen += outlen;
+    }
+
+    if (1 != EVP_CipherFinal_ex(ctx, outbuf, &outlen)) handleErrors();
+    fwrite(outbuf, 1, outlen, ofp);
+    totallen += outlen;
+
+    EVP_CIPHER_CTX_free(ctx);
+    return totallen;
+}
+
 
 
 #ifdef _WIN32
@@ -45,10 +216,10 @@ void sendMouseClick(DWORD flags) {
     INPUT input[2] = { 0 };
 
     input[0].type = INPUT_MOUSE;
-    input[0].mi.dwFlags = flags;  // Drücken
+    input[0].mi.dwFlags = flags;
 
     input[1].type = INPUT_MOUSE;
-    input[1].mi.dwFlags = flags | MOUSEEVENTF_LEFTUP;  // Loslassen
+    input[1].mi.dwFlags = flags | MOUSEEVENTF_LEFTUP;
 
     SendInput(2, input, sizeof(INPUT));
 }
@@ -100,7 +271,7 @@ void sendSpecialKey(const char* key) {
         sendKeyEvent(VK_BACK, FALSE, FALSE);
         sendKeyEvent(VK_BACK, FALSE, TRUE);
     }
-    // Fügen Sie hier weitere spezielle Tasten hinzu
+    
 }
 
 
@@ -139,7 +310,7 @@ char* os(const char* command) {
     static size_t resultSize = 0;
 
     size_t bytesUsed = 0;
-    FILE* pipe = _popen(command, "r");  // Verwende _popen auf Windows
+    FILE* pipe = _popen(command, "r");
     if (!pipe) return "ERROR";
 
     if (result == NULL) {
@@ -160,7 +331,7 @@ char* os(const char* command) {
             char* newResult = realloc(result, newSize);
             if (!newResult) {
                 perror("Failed to reallocate memory");
-                _pclose(pipe);  // Verwende _pclose auf Windows
+                _pclose(pipe);
                 return NULL;
             }
             result = newResult;
@@ -170,7 +341,7 @@ char* os(const char* command) {
         bytesUsed += bufferLen;
     }
 
-    _pclose(pipe);  // Verwende _pclose auf Windows
+    _pclose(pipe);
     return result;
 }
 
@@ -206,77 +377,100 @@ char* startKeylogger() {
             }
         }
     }
-
-    // Die Schleife ist endlos. Für die praktische Verwendung sollten Sie eine Bedingung zum Beenden hinzufügen.
     // return recordedKeys;  // Diese Zeile wird nie erreicht, da die Schleife endlos ist.
 }
 
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+void overwriteFile(const char* filePath, const unsigned char* patterns, size_t patternLength, int passes) {
+    FILE* file;
+    errno_t err = fopen_s(&file, filePath, "r+b");
 
-void overwriteFile(const char* filePath, const unsigned char* patterns, size_t patternLength, int passes, int patternCount) {
-    FILE* file = fopen(filePath, "r+b");
-    if (file == NULL) {
-        perror("Datei konnte nicht geöffnet werden");
+    if (err != 0 || file == NULL) {
+        perror("Fehler beim Öffnen der Datei");
         return;
     }
 
     fseek(file, 0, SEEK_END);
     long fileSize = ftell(file);
-    rewind(file);
+    fseek(file, 0, SEEK_SET);
 
-    for (int pass = 0; pass < passes; ++pass) {
-        for (long i = 0; i < fileSize; ++i) {
-            fwrite(&patterns[pass % patternCount], 1, patternLength, file);
-            rewind(file);
-        }
-        fflush(file);
+    unsigned char* buffer = (unsigned char*)malloc(patternLength * sizeof(unsigned char));
+    if (buffer == NULL) {
+        perror("Speicherzuweisung fehlgeschlagen");
+        fclose(file);
+        return;
     }
 
+    for (int pass = 0; pass < passes; ++pass) {
+        for (long i = 0; i < fileSize; i += patternLength) {
+            memcpy(buffer, patterns + (pass % passes) * patternLength, patternLength);
+            fwrite(buffer, 1, patternLength, file);
+            fflush(file);
+        }
+        fseek(file, 0, SEEK_SET);
+    }
+
+    free(buffer);
     fclose(file);
 }
 
-void erase(const char* filePath, const char* algorithm) {
-    if (strcmp(algorithm, "DoD5220.22-M") == 0) {
-        const unsigned char patterns[3] = { 0x00, 0xFF, 0x00 };
-        overwriteFile(filePath, patterns, 1, 3, 3);
-    }
-    else if (strcmp(algorithm, "AFSSI-5020") == 0) {
-        const unsigned char pattern = 0x00;
-        overwriteFile(filePath, &pattern, 1, 1, 1);
-    }
-    else if (strcmp(algorithm, "GOST-R-50739-95") == 0) {
-        const unsigned char pattern = 0x00;
-        overwriteFile(filePath, &pattern, 1, 2, 1);
-    }
-    else if (strcmp(algorithm, "British HMG IS5") == 0) {
-        const unsigned char patterns[3] = { 0x00, 0xFF, 0x00 };
-        overwriteFile(filePath, patterns, 1, 3, 3);
-    }
-    else if (strcmp(algorithm, "Canadian RCMP TSSIT OPS-II") == 0) {
-        const unsigned char patterns[7] = { 0x01, 0xFE, 0x01, 0xFE, 0x01, 0xFE, 0x00 };
-        overwriteFile(filePath, patterns, 1, 7, 7);
-    }
-    else if (strcmp(algorithm, "Peter Gutmann") == 0) {
-        const unsigned char patterns[35] = {
-            0x55, 0xAA, 0x92, 0x49, 0x24, 0x00, 0x11, 0x22, 0x33, 0x44,
-            0x55, 0xAA, 0x77, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x92, 0x49,
-            0x24, 0x6D, 0xB6, 0xDB, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55,
-            0xAA, 0x5A, 0xA5, 0xFF, 0x00
-        };
-        overwriteFile(filePath, patterns, 1, 35, 35);
-    }
-    else if (strcmp(algorithm, "US Army AR380-19") == 0) {
-        const unsigned char patterns[3] = { 0x00, 0xFF, 0x00 };
-        overwriteFile(filePath, patterns, 1, 3, 3);
+void derive_key_iv(const char* password, unsigned char* key, unsigned char* iv, EncryptionAlgorithm algo) {
+    const unsigned char salt[] = "12345678";
+    const int iterations = 10000;
+
+    if (!PKCS5_PBKDF2_HMAC(password, -1, salt, sizeof(salt), iterations, EVP_sha256(), EVP_MAX_KEY_LENGTH, key)) {
+        fprintf(stderr, "Fehler bei der Schlüsselableitung.\n");
+        exit(1);
     }
 
-    // Schließlich die Datei löschen
-    remove(filePath);
+    
+    memcpy(iv, key + EVP_MAX_KEY_LENGTH - EVP_MAX_IV_LENGTH, EVP_MAX_IV_LENGTH);
 }
 
+
+void file_encrypt(const char* infile, const char* password, EncryptionAlgorithm algo) {
+    char outfile[260];
+    sprintf_s(outfile, sizeof(outfile), "%s.CRYPT", infile);
+
+    FILE* ifp, * ofp;
+    fopen_s(&ifp, infile, "rb");
+    fopen_s(&ofp, outfile, "wb");
+
+    unsigned char key[EVP_MAX_KEY_LENGTH], iv[EVP_MAX_IV_LENGTH];
+    derive_key_iv(password, key, iv, algo);
+
+    if (file_encrypt_decrypt(ifp, ofp, key, iv, algo, 1) < 0) {
+        fprintf(stderr, "Encryption failed.\n");
+    }
+
+    fclose(ifp);
+    fclose(ofp);
+}
+
+void file_decrypt(const char* infileEncrypted, const char* password, EncryptionAlgorithm algo) {
+    size_t len = strlen(infileEncrypted);
+    if (len <= 6 || strcmp(infileEncrypted + len - 6, ".CRYPT") != 0) {
+        fprintf(stderr, "Input file does not have the expected '.CRYPT' extension.\n");
+        return;
+    }
+
+    char outfile[260];
+    strncpy_s(outfile, sizeof(outfile), infileEncrypted, len - 6);
+
+    FILE* ifp, * ofp;
+    fopen_s(&ifp, infileEncrypted, "rb");
+    fopen_s(&ofp, outfile, "wb");
+
+    unsigned char key[EVP_MAX_KEY_LENGTH], iv[EVP_MAX_IV_LENGTH];
+    derive_key_iv(password, key, iv, algo);
+
+    if (file_encrypt_decrypt(ifp, ofp, key, iv, algo, 0) < 0) {
+        fprintf(stderr, "Decryption failed.\n");
+    }
+
+    fclose(ifp);
+    fclose(ofp);
+}
 
 
 #endif WIN
@@ -292,8 +486,8 @@ void sendKey(Display* display, KeySym keysym, Bool isShift) {
         XTestFakeKeyEvent(display, XKeysymToKeycode(display, XK_Shift_L), True, 0);
     }
 
-    XTestFakeKeyEvent(display, keycode, True, 0);  // Tastendruck
-    XTestFakeKeyEvent(display, keycode, False, 0); // Tastenfreigabe
+    XTestFakeKeyEvent(display, keycode, True, 0);
+    XTestFakeKeyEvent(display, keycode, False, 0);
 
     if (isShift) {
         XTestFakeKeyEvent(display, XKeysymToKeycode(display, XK_Shift_L), False, 0);
@@ -326,22 +520,22 @@ void handleSpecialKey(Display* display, const char* key) {
 }
 
 KeySym charToKeySym(char c) {
-    // Direkte Unterstützung für Zahlen und Großbuchstaben
+
     if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z')) {
         return c;
     }
 
-    // Konvertierung für Kleinbuchstaben zu ihren entsprechenden KeySyms
+
     if (c >= 'a' && c <= 'z') {
         return c - 'a' + 'A';
     }
 
-    // Unterstützung für Leerzeichen
+
     if (c == ' ') {
         return XK_space;
     }
 
-    // Erweiterte Zuordnung für Sonderzeichen
+  
     switch (c) {
     case '!': return XK_exclam;
     case '@': return XK_at;
@@ -375,7 +569,7 @@ KeySym charToKeySym(char c) {
     case '?': return XK_question;
     case '`': return XK_grave;
     case '~': return XK_asciitilde;
-        // Fügen Sie hier weitere Fälle für Sonderzeichen hinzu, falls erforderlich
+   
     default:
         fprintf(stderr, "Unsupported character: %c\n", c);
         return NoSymbol;
@@ -392,14 +586,14 @@ void SendKeys(const char* str) {
     while (*str != '\0') {
         if (*str == '{') {
             char buffer[256] = { 0 };
-            str++;  // Überspringe das öffnende '{'
+            str++;
             char* bufPtr = buffer;
             while (*str != '}' && *str != '\0') {
                 *bufPtr++ = *str++;
             }
-            *bufPtr = '\0';  // Null-Terminator hinzufügen
+            *bufPtr = '\0';
             if (*str == '}') {
-                str++;  // Überspringe das schließende '}'
+                str++;
             }
             handleSpecialKey(display, buffer);
         }
@@ -428,21 +622,21 @@ void setMousePosition(int x, int y) {
 
     Window root = DefaultRootWindow(display);
     XWarpPointer(display, None, root, 0, 0, 0, 0, x, y);
-    XFlush(display);  // Stellt sicher, dass der Befehl sofort ausgeführt wird
+    XFlush(display);
 
     XCloseDisplay(display);
 }
 
 
 char* os(const char* command) {
-    static char* result = NULL;  // Statischer Pointer, um den aktuellen Speicherblock zu speichern
-    static size_t resultSize = 0;  // Aktuelle Größe des Speicherblocks
+    static char* result = NULL;
+    static size_t resultSize = 0;
 
-    size_t bytesUsed = 0;  // Wie viel vom Speicher bereits verwendet wurde
+    size_t bytesUsed = 0;
     FILE* pipe = popen(command, "r");
     if (!pipe) return "ERROR";
 
-    if (result == NULL) {  // Initialisiere den Speicher bei der ersten Verwendung
+    if (result == NULL) {
         result = malloc(1024);
         if (!result) {
             perror("Failed to allocate memory");
@@ -450,12 +644,12 @@ char* os(const char* command) {
         }
         resultSize = 1024;
     }
-    result[0] = '\0';  // Reset des Ergebnis-Strings für diesen Aufruf
+    result[0] = '\0';
 
     char buffer[128];
     while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
         size_t bufferLen = strlen(buffer);
-        if (bytesUsed + bufferLen + 1 > resultSize) {  // +1 für den Nullterminator
+        if (bytesUsed + bufferLen + 1 > resultSize) {
             size_t newSize = resultSize + 1024;
             char* newResult = realloc(result, newSize);
             if (!newResult) {
@@ -495,7 +689,7 @@ void overwriteFile(const char* filePath, const unsigned char* patterns, size_t p
     }
 
     fclose(file);
-    // Sicherstellen, dass die Datei tatsächlich gelöscht wird
+    
     remove(filePath);
 }
 
@@ -516,7 +710,7 @@ void SendKeys(const char* sequence) {
         }
         else if (*sequence == '{') {
             char specialKey[32] = { 0 };
-            int offset = 1; // Start after '{'
+            int offset = 1;
             while (sequence[offset] != '}' && sequence[offset] != '\0' && offset < 31) {
                 specialKey[offset - 1] = sequence[offset];
                 offset++;
@@ -556,10 +750,10 @@ void SendKeys(const char* sequence) {
                 int fnum = atoi(specialKey + 1);
                 if (fnum >= 1 && fnum <= 12) {
                     char fCommand[64];
-                    sprintf(fCommand, "key code %d'", 122 + fnum - 1); // F1 starts at key code 122
+                    sprintf(fCommand, "key code %d'", 122 + fnum - 1);
                     strcat(command, fCommand);
                 }
-            } // Continue for other keys as needed
+            }
             sequence += offset + 1; // Move past the '}'
         }
         else {
@@ -584,58 +778,114 @@ void setMousePosition(int x, int y) {
 
 
 #if defined(__APPLE__) || defined(__linux__)
-void overwriteFile(const char* filePath, const unsigned char* patterns, size_t patternLength, int passes, int patternCount) {
+void overwriteFile(const char* filePath, const unsigned char* patterns, size_t patternLength, int passes) {
     FILE* file = fopen(filePath, "r+b");
+
     if (file == NULL) {
-        perror("Datei konnte nicht geöffnet werden");
+        perror("Fehler beim Öffnen der Datei");
         return;
     }
 
     fseek(file, 0, SEEK_END);
     long fileSize = ftell(file);
-    rewind(file);
+    fseek(file, 0, SEEK_SET);
+
+    unsigned char* buffer = (unsigned char*)malloc(patternLength * sizeof(unsigned char));
+    if (buffer == NULL) {
+        perror("Speicherzuweisung fehlgeschlagen");
+        fclose(file);
+        return;
+    }
 
     for (int pass = 0; pass < passes; ++pass) {
-        for (long i = 0; i < fileSize; ++i) {
-            fwrite(&patterns[pass % patternCount], 1, patternLength, file);
-            rewind(file);
+        for (long i = 0; i < fileSize; i += patternLength) {
+            memcpy(buffer, patterns + (pass % passes) * patternLength, patternLength);
+            fwrite(buffer, 1, patternLength, file);
+            fflush(file);
         }
-        fflush(file);
+        fseek(file, 0, SEEK_SET);
     }
 
+    free(buffer);
     fclose(file);
-    // Sicherstellen, dass die Datei tatsächlich gelöscht wird
-    remove(filePath);
 }
 
-void Erase(const char* filePath, const char* algorithm) {
-    if (strcmp(algorithm, "DoD5220.22-M") == 0) {
-        const unsigned char patterns[3] = { 0x00, 0xFF, 0x00 };
-        overwriteFile(filePath, patterns, 1, 3, 3);
-    }
-    else if (strcmp(algorithm, "AFSSI-5020") == 0 || strcmp(algorithm, "GOST-R-50739-95") == 0) {
-        const unsigned char pattern = 0x00;
-        overwriteFile(filePath, &pattern, 1, (strcmp(algorithm, "AFSSI-5020") == 0) ? 1 : 2, 1);
-    }
-    else if (strcmp(algorithm, "British HMG IS5") == 0 || strcmp(algorithm, "US Army AR380-19") == 0) {
-        const unsigned char patterns[3] = { 0x00, 0xFF, 0x00 };
-        overwriteFile(filePath, patterns, 1, 3, 3);
-    }
-    else if (strcmp(algorithm, "Canadian RCMP TSSIT OPS-II") == 0) {
-        const unsigned char patterns[7] = { 0x01, 0xFE, 0x01, 0xFE, 0x01, 0xFE, 0x00 };
-        overwriteFile(filePath, patterns, 1, 7, 7);
-    }
-    else if (strcmp(algorithm, "Peter Gutmann") == 0) {
-        const unsigned char patterns[35] = {
-            // Gutmann-Muster sollten hier spezifiziert werden. Für das Beispiel wird ein vereinfachtes Muster verwendet.
-            0x55, 0xAA, 0x92, 0x49, 0x24, 0x6D, 0xB6, 0xDB, 0x00
-            // Füllen Sie das Muster bis zu 35 Durchgängen auf.
-        };
-        overwriteFile(filePath, patterns, 1, 35, sizeof(patterns));
+
+
+void handleErrors(void) {
+    ERR_print_errors_fp(stderr);
+    abort();
+}
+
+void derive_key_iv(const char* password, unsigned char* key, unsigned char* iv, EncryptionAlgorithm algo) {
+    const unsigned char salt[] = "12345678";
+    const int iterations = 10000;
+
+    if (!PKCS5_PBKDF2_HMAC(password, -1, salt, sizeof(salt), iterations, EVP_sha256(), EVP_MAX_KEY_LENGTH, key)) {
+        fprintf(stderr, "Fehler bei der Schlüsselableitung.\n");
+        exit(1);
     }
 
-    printf("Datei %s wurde sicher gelöscht mit dem Algorithmus %s.\n", filePath, algorithm);
+    
+    memcpy(iv, key + EVP_MAX_KEY_LENGTH - EVP_MAX_IV_LENGTH, EVP_MAX_IV_LENGTH);
 }
+
+
+void file_encrypt(const char* infile, const char* password, EncryptionAlgorithm algo) {
+    char outfile[260];
+    snprintf(outfile, sizeof(outfile), "%s.CRYPT", infile);
+
+    FILE* ifp = fopen(infile, "rb");
+    FILE* ofp = fopen(outfile, "wb");
+
+    if (!ifp || !ofp) {
+        perror("Fehler beim Öffnen der Datei");
+        if (ifp) fclose(ifp);
+        if (ofp) fclose(ofp);
+        return;
+    }
+
+    unsigned char key[EVP_MAX_KEY_LENGTH], iv[EVP_MAX_IV_LENGTH];
+    derive_key_iv(password, key, iv, algo);
+
+    if (file_encrypt_decrypt(ifp, ofp, key, iv, algo, 1) < 0) {
+        fprintf(stderr, "Encryption failed.\n");
+    }
+
+    fclose(ifp);
+    fclose(ofp);
+}
+
+void file_decrypt(const char* infileEncrypted, const char* password, EncryptionAlgorithm algo) {
+    size_t len = strlen(infileEncrypted);
+    char outfile[260];
+    if (len <= 6 || strcmp(infileEncrypted + len - 6, ".CRYPT") != 0) {
+        fprintf(stderr, "Input file does not have the expected '.CRYPT' extension.\n");
+        return;
+    }
+    snprintf(outfile, sizeof(outfile), "%.*s", (int)len - 6, infileEncrypted);
+
+    FILE* ifp = fopen(infileEncrypted, "rb");
+    FILE* ofp = fopen(outfile, "wb");
+
+    if (!ifp || !ofp) {
+        perror("Fehler beim Öffnen der Datei");
+        if (ifp) fclose(ifp);
+        if (ofp) fclose(ofp);
+        return;
+    }
+
+    unsigned char key[EVP_MAX_KEY_LENGTH], iv[EVP_MAX_IV_LENGTH];
+    derive_key_iv(password, key, iv, algo);
+
+    if (file_encrypt_decrypt(ifp, ofp, key, iv, algo, 0) < 0) {
+        fprintf(stderr, "Decryption failed.\n");
+    }
+
+    fclose(ifp);
+    fclose(ofp);
+}
+
+
 #endif
-
 
