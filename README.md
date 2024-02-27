@@ -1,6 +1,6 @@
 # CIBRA: Simplified System Control & Encryption in C
 
-CIBRA, or Comprehensive Interface for Binary and Resource Automation, is a streamlined C library for system automation, encryption, and various utility functions. It simplifies complex tasks like user input simulation, secure file operations, and system commands, making it ideal for enhancing C projects with advanced features easily and efficiently.
+CIBRA, short for Comprehensive Interface for Binary and Resource Automation, is a sleek C library designed for system automation, encryption, and utility functions, leveraging OpenSSL for robust security. It streamlines complex tasks such as user input simulation, secure file handling, and system commands, enabling the easy integration of sophisticated features into C projects.
 
 ## SendKeys Function
 
